@@ -1,6 +1,14 @@
 "use client";
 
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -15,8 +23,10 @@ import { cn } from "@/lib/utils";
 import { useChat } from "@ai-sdk/react";
 import {
   ClockFadingIcon,
+  SearchIcon,
   SlidersHorizontalIcon,
   TriangleAlertIcon,
+  XIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -26,7 +36,7 @@ export default function Chat() {
   const { messages, sendMessage, status, stop } = useChat();
 
   return (
-    <main className={cn(messages.length === 0 ? "pt-10 md:pt-20" : "pt-8")}>
+    <main className={cn(messages.length === 0 ? "pt-10 md:pt-64" : "pt-8")}>
       {messages.length === 0 && (
         <div>
           <div className="text-center">
@@ -86,17 +96,14 @@ export default function Chat() {
               ))}
             </div>
           </ScrollArea>
-        ) : (
-          <div className="bg-amber-500/25 border border-amber-600/25 rounded-lg p-3 max-w-xl mx-auto flex gap-2">
-            <TriangleAlertIcon className="size-5 text-amber-500 mt-0.5" />
-            <p className="text-sm text-amber-500">
-              By default, no chat history is saved and API keys are only stored
-              for the duration of the session.
-            </p>
-          </div>
-        )}
+        ) : null}
 
-        <div className="absolute bottom-6 w-full left-0">
+        <div
+          className={cn(
+            "absolute bottom-6 w-full left-0 transition-all duration-300 ease-out",
+            messages.length === 0 && "bottom-1/3 -translate-y-1/2"
+          )}
+        >
           <div className="relative max-w-2xl mx-auto">
             <form
               onSubmit={(e) => {
@@ -118,32 +125,67 @@ export default function Chat() {
               className="bg-background"
             >
               <Textarea
-                placeholder="How can I help you?"
-                className="w-full resize-none h-32 p-3.5 pr-12"
+                placeholder={
+                  messages.length === 0 ? "How can I help you?" : "Reply..."
+                }
+                className="w-full resize-none h-32 p-3.5 pr-12 "
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
               <div className="absolute bottom-4 left-4 right-4">
                 <div className="flex justify-between">
                   <div className="flex gap-2">
-                    <Button
-                      size="icon"
-                      className="w-8 h-8 text-muted-foreground"
-                      variant="outline"
-                    >
-                      <SlidersHorizontalIcon />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="icon"
+                          className="w-8 h-8 text-muted-foreground"
+                          variant="outline"
+                        >
+                          <SlidersHorizontalIcon />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <div className="relative">
+                          <SearchIcon className="size-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            className="border-none pl-8 !bg-transparent focus-visible:ring-0"
+                            placeholder="Search..."
+                          />
+                        </div>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem>Profile</DropdownMenuItem>
+                        <DropdownMenuItem>Billing</DropdownMenuItem>
+                        <DropdownMenuItem>Team</DropdownMenuItem>
+                        <DropdownMenuItem>Subscription</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button
                       onClick={() => setIsReasoningEnabled(!isReasoningEnabled)}
                       size="icon"
                       className={cn(
-                        "w-8 h-8 text-muted-foreground",
+                        "w-8 h-8 text-muted-foreground group transition-all duration-200 ease-in-out overflow-hidden",
                         isReasoningEnabled &&
                           "!bg-blue-500/25 !text-blue-400 !border-blue-400/25"
                       )}
                       variant="outline"
                     >
-                      <ClockFadingIcon />
+                      <div className="relative flex items-center justify-center w-full h-full">
+                        <ClockFadingIcon
+                          className={cn(
+                            "transition-all duration-200 ease-in-out",
+                            isReasoningEnabled &&
+                              "group-hover:opacity-0 group-hover:scale-75"
+                          )}
+                        />
+                        <XIcon
+                          className={cn(
+                            "absolute transition-all duration-200 ease-in-out opacity-0 scale-75",
+                            isReasoningEnabled &&
+                              "group-hover:opacity-100 group-hover:scale-100"
+                          )}
+                        />
+                      </div>
                     </Button>
                   </div>
                   <Button
