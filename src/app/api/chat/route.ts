@@ -1,10 +1,12 @@
 import { models } from "@/lib/models";
+import { webSearch } from "@/lib/tools";
 import { anthropic, AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import {
   streamText,
   UIMessage,
   convertToModelMessages,
   smoothStream,
+  stepCountIs,
 } from "ai";
 
 // Allow streaming responses up to 30 seconds
@@ -14,9 +16,15 @@ export async function POST(req: Request) {
   const {
     messages,
     isReasoningEnabled,
-  }: { messages: UIMessage[]; isReasoningEnabled: boolean } = await req.json();
+    enabledTools,
+  }: {
+    messages: UIMessage[];
+    isReasoningEnabled: boolean;
+    enabledTools: string[];
+  } = await req.json();
 
   const result = streamText({
+    stopWhen: stepCountIs(5),
     model: models.languageModel("claude-sonnet-4"),
     system: CLAUDE_SYSTEM_PROMPT,
     messages: convertToModelMessages(messages),
@@ -38,6 +46,7 @@ export async function POST(req: Request) {
         chunking: "word",
       }),
     ],
+    tools: enabledTools.includes("webSearch") ? { webSearch } : undefined,
   });
 
   return result.toUIMessageStreamResponse({
