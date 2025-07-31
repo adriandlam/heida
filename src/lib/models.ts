@@ -9,7 +9,14 @@ import {
 export const models = customProvider({
   languageModels: {
     "claude-sonnet-4": wrapLanguageModel({
-      model: anthropic("claude-3-7-sonnet-20250219"),
+      model: anthropic("claude-sonnet-4-20250514"),
+      middleware: extractReasoningMiddleware({
+        tagName: "reasoning",
+        startWithReasoning: false,
+      }),
+    }),
+    "claude-opus-4": wrapLanguageModel({
+      model: anthropic("claude-opus-4-20250514"),
       middleware: extractReasoningMiddleware({
         tagName: "reasoning",
         startWithReasoning: false,
