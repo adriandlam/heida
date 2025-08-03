@@ -22,13 +22,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -36,9 +29,12 @@ import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ChevronDownIcon,
   ClockFadingIcon,
   GlobeIcon,
+  LetterTextIcon,
   SlidersHorizontalIcon,
+  XIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -51,16 +47,74 @@ const chat = new Chat({
   }),
 });
 
+interface OverflowFile {
+  id: string;
+  content: string;
+  wordCount: number;
+  charCount: number;
+  createdAt: Date;
+}
+
 export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("claude-sonnet-4");
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
-  const [isReasoningEnabled, setIsReasoningEnabled] = useState(false);
+  const [overflowFiles, setOverflowFiles] = useState<OverflowFile[]>([]);
   const { messages, sendMessage, status, stop } = useChat({
     chat,
     experimental_throttle: 50,
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Constants for overflow detection
+  const MAX_CHARS = 2000;
+  const MAX_WORDS = 400;
+
+  // Utility functions
+  const countWords = (text: string): number => {
+    return text
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0).length;
+  };
+
+  const generateId = (): string => {
+    return Math.random().toString(36).substring(2, 11);
+  };
+
+  const createOverflowFile = (content: string): OverflowFile => {
+    return {
+      id: generateId(),
+      content,
+      wordCount: countWords(content),
+      charCount: content.length,
+      createdAt: new Date(),
+    };
+  };
+
+  const handleTextOverflow = (
+    text: string
+  ): { shouldCreateFile: boolean; truncatedText: string } => {
+    const wordCount = countWords(text);
+    const charCount = text.length;
+
+    if (charCount > MAX_CHARS || wordCount > MAX_WORDS) {
+      // Create overflow file with the excess content
+      const overflowContent = text;
+      const newOverflowFile = createOverflowFile(overflowContent);
+
+      setOverflowFiles((prev) => [...prev, newOverflowFile]);
+
+      // Return empty text to clear the textarea
+      return { shouldCreateFile: true, truncatedText: "" };
+    }
+
+    return { shouldCreateFile: false, truncatedText: text };
+  };
+
+  const removeOverflowFile = (id: string) => {
+    setOverflowFiles((prev) => prev.filter((file) => file.id !== id));
+  };
 
   useHotkeys(
     "slash",
@@ -79,6 +133,19 @@ export default function ChatPage() {
         sendMessage({
           text: textareaRef.current?.value,
         });
+      }
+    },
+    {
+      preventDefault: true,
+      enableOnFormTags: true,
+    }
+  );
+
+  useHotkeys(
+    "backspace",
+    () => {
+      if (!textareaRef.current?.value.trim()) {
+        setOverflowFiles((prev) => prev.slice(0, -1));
       }
     },
     {
@@ -404,10 +471,23 @@ export default function ChatPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (textareaRef.current?.value.trim()) {
+                if (
+                  textareaRef.current?.value.trim() ||
+                  overflowFiles.length > 0
+                ) {
+                  // Combine current text with overflow files
+                  let fullText = textareaRef.current?.value || "";
+                  if (overflowFiles.length > 0) {
+                    const overflowContent = overflowFiles
+                      .map((file) => file.content)
+                      .join("\n\n");
+                    fullText =
+                      overflowContent + (fullText ? "\n\n" + fullText : "");
+                  }
+
                   sendMessage(
                     {
-                      text: textareaRef.current?.value,
+                      text: fullText,
                     },
                     {
                       body: {
@@ -417,21 +497,61 @@ export default function ChatPage() {
                     }
                   );
                   textareaRef.current!.value = "";
+                  setOverflowFiles([]); // Clear overflow files after sending
                 }
               }}
               className="bg-background"
             >
-              <Textarea
-                placeholder={
-                  messages.length === 0
-                    ? "What can I do for you today?"
-                    : `Reply to ${selectedModel}...`
-                }
-                className="w-full resize-none h-32 p-3.5 pr-24"
-                ref={textareaRef}
-              />
-              <div className="absolute top-4 right-4 text-muted-foreground border px-1.5 py-0.5 rounded text-xs bg-secondary pointer-events-none">
-                <kbd>/</kbd> focus
+              {overflowFiles.length > 0 && (
+                <div className="pl-3.5 py-2 border-x border-t rounded-t-lg bg-input/30 shadow-sm">
+                  <div className="flex flex-wrap gap-2">
+                    {overflowFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className="min-w-0 max-w-36 bg-background border pl-1.5 pr-2 py-1 rounded-lg flex items-center gap-2 group hover:bg-accent/15 transition-colors"
+                      >
+                        <div className="flex items-center justify-center border p-1 rounded-sm bg-muted/50 shrink-0">
+                          <LetterTextIcon className="size-3.5 text-muted-foreground" />
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono min-w-0 flex-1 cursor-default">
+                          <span className="block truncate">
+                            {file.content.substring(0, 50)}...
+                          </span>
+                          <div className="text-[10px] text-muted-foreground/70">
+                            {file.wordCount} words
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeOverflowFile(file.id)}
+                          className="shrink-0 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <XIcon className="size-3 text-muted-foreground hover:text-foreground transition-colors" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="relative">
+                <Textarea
+                  placeholder={
+                    messages.length === 0
+                      ? "What can I do for you today?"
+                      : `Reply to ${selectedModel}...`
+                  }
+                  className="w-full resize-none h-32 p-3.5 pr-24"
+                  ref={textareaRef}
+                  onChange={(e) => {
+                    const { shouldCreateFile, truncatedText } =
+                      handleTextOverflow(e.target.value);
+                    if (shouldCreateFile) {
+                      e.target.value = truncatedText;
+                    }
+                  }}
+                />
+                <div className="absolute top-4 right-4 text-muted-foreground border px-1.5 py-0.5 rounded text-xs bg-secondary pointer-events-none">
+                  <kbd>/</kbd> focus
+                </div>
               </div>
               <div className="absolute bottom-4 left-4 right-4 pointer-events-none">
                 <div className="flex justify-between">
@@ -444,7 +564,7 @@ export default function ChatPage() {
                           className={cn(
                             "w-8 h-8 text-muted-foreground relative",
                             enabledTools.length > 0 &&
-                              "border !border-blue-500/25 !bg-blue-500/25 text-blue-400"
+                              "border !border-blue-500/25 !bg-blue-500/25 text-blue-400 hover:text-blue-300"
                           )}
                           variant="outline"
                         >
@@ -574,22 +694,49 @@ export default function ChatPage() {
                     </Button> */}
                   </div>
                   <div className="flex items-center gap-2 pointer-events-auto">
-                    <Select
-                      value={selectedModel}
-                      onValueChange={setSelectedModel}
-                    >
-                      <SelectTrigger className="hover:cursor-pointer !bg-transparent pl-2.5 py-2.5 w-40 border-none focus-visible:ring-0 hover:!bg-black hover:border !h-6 rounded transition-all duration-100 ease-out">
-                        <SelectValue placeholder="model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="claude-sonnet-4">
-                          Claude Sonnet 4
-                        </SelectItem>
-                        <SelectItem value="claude-opus-4">
-                          Claude Opus 4
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="font-normal hover:cursor-pointer !bg-transparent pl-2.5 py-2.5 w-auto border-none focus-visible:ring-0 hover:!bg-black hover:border !h-6 rounded transition-all duration-100 ease-out justify-between"
+                        >
+                          {selectedModel === "claude-sonnet-4" &&
+                            "Claude Sonnet 4"}
+                          {selectedModel === "claude-opus-4" && "Claude Opus 4"}
+                          <ChevronDownIcon className="size-4 text-muted-foreground/75" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent asChild>
+                        <Command>
+                          <CommandInput
+                            placeholder="Search model..."
+                            autoFocus={true}
+                            className="h-9"
+                          />
+                          <CommandList>
+                            <CommandEmpty>No models found</CommandEmpty>
+                            <CommandGroup heading="Available Models">
+                              <CommandItem
+                                onSelect={() =>
+                                  setSelectedModel("claude-sonnet-4")
+                                }
+                                className="cursor-pointer"
+                              >
+                                Claude Sonnet 4
+                              </CommandItem>
+                              <CommandItem
+                                onSelect={() =>
+                                  setSelectedModel("claude-opus-4")
+                                }
+                                className="cursor-pointer"
+                              >
+                                Claude Opus 4
+                              </CommandItem>
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button
                       type="submit"
                       size="icon"
