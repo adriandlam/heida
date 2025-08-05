@@ -1,6 +1,6 @@
 "use client";
 
-import { MemoizedMarkdown } from "@/components/memoized-markdown";
+import { StreamingMarkdown } from "@/components/memoized-markdown";
 import {
   Accordion,
   AccordionContent,
@@ -29,6 +29,7 @@ import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  CheckIcon,
   ChevronDownIcon,
   ClockFadingIcon,
   GlobeIcon,
@@ -149,7 +150,7 @@ export default function ChatPage() {
       }
     },
     {
-      preventDefault: true,
+      preventDefault: false,
       enableOnFormTags: true,
     }
   );
@@ -198,11 +199,11 @@ export default function ChatPage() {
               <AnimatePresence mode="popLayout">
                 {messages.map((message, messageIndex) =>
                   message.role === "user" ? (
-                    <div key={message.id} className={cn("text-[15px]")}>
+                    <div key={message.id}>
                       {message.parts.map((part, i) => (
                         <div
                           key={`${message.id}-${i}`}
-                          className="bg-muted/50 px-3.5 py-3 rounded-lg"
+                          className="bg-muted/50 px-3.5 py-3 rounded-lg text-sm"
                         >
                           {part.type === "text" ? part.text : part.type}
                         </div>
@@ -211,7 +212,6 @@ export default function ChatPage() {
                   ) : (
                     <motion.div
                       key={message.id}
-                      className={cn("text-[15px]")}
                       initial={{
                         opacity: 0,
                         filter: "blur(8px)",
@@ -264,7 +264,8 @@ export default function ChatPage() {
     prose-h2:border-b prose-h2:pb-2 prose-h2:text-2xl prose-h2:font-semibold prose-h2:tracking-tight prose-h2:first:mt-0 prose-h2:mt-8 prose-h2:mb-4
     prose-h3:text-xl prose-h3:font-semibold prose-h3:tracking-tight prose-h3:mt-6 prose-h3:mb-3
     prose-h4:text-lg prose-h4:font-semibold prose-h4:tracking-tight prose-h4:mt-6 prose-h4:mb-3
-    prose-p:leading-relaxed prose-p:[&:not(:first-child)]:mt-4 prose-p:mb-4
+    prose-p:leading-relaxed
+    text-[15px]
     prose-p:whitespace-pre-wrap
     prose-strong:font-semibold prose-strong:text-foreground
     prose-blockquote:mt-6 prose-blockquote:mb-6 prose-blockquote:border-l-2 prose-blockquote:pl-6 prose-blockquote:italic prose-blockquote:text-muted-foreground prose-blockquote:bg-muted/20 prose-blockquote:py-2
@@ -280,10 +281,9 @@ export default function ChatPage() {
     prose-a:text-primary prose-a:underline prose-a:underline-offset-4 hover:prose-a:text-primary/80 prose-a:break-all
     [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                                   >
-                                    <MemoizedMarkdown
+                                    <StreamingMarkdown
                                       key={`${message.id}-${i}`}
                                       content={part.text}
-                                      id={message.id}
                                     />
                                   </div>
                                 </motion.div>
@@ -439,7 +439,7 @@ export default function ChatPage() {
                   animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
                   exit={{ opacity: 0.75, filter: "blur(4px)", y: -10 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-                  className="px-3 py-2"
+                  className="px-1.5 py-1"
                 >
                   <motion.div
                     animate={{
@@ -503,7 +503,7 @@ export default function ChatPage() {
               className="bg-background"
             >
               {overflowFiles.length > 0 && (
-                <div className="pl-3.5 py-2 border-x border-t rounded-t-lg bg-input/30 shadow-sm">
+                <div className="pl-3.5 py-2 border rounded-lg bg-input/30 shadow-sm">
                   <div className="flex flex-wrap gap-2">
                     {overflowFiles.map((file) => (
                       <div
@@ -571,7 +571,7 @@ export default function ChatPage() {
                           <SlidersHorizontalIcon />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent asChild>
+                      <DropdownMenuContent asChild align="start">
                         <Command>
                           <CommandInput
                             placeholder="Search tool..."
@@ -698,15 +698,17 @@ export default function ChatPage() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="outline"
-                          className="font-normal hover:cursor-pointer !bg-transparent pl-2.5 py-2.5 w-auto border-none focus-visible:ring-0 hover:!bg-black hover:border !h-6 rounded transition-all duration-100 ease-out justify-between"
+                          className="font-normal hover:cursor-pointer !bg-transparent py-2.5 w-40 px-2 border-none focus-visible:ring-0 hover:!bg-black hover:border !h-6 rounded transition-all duration-100 ease-out justify-between"
                         >
                           {selectedModel === "claude-sonnet-4" &&
                             "Claude Sonnet 4"}
                           {selectedModel === "claude-opus-4" && "Claude Opus 4"}
+                          {selectedModel === "claude-opus-4.1" &&
+                            "Claude Opus 4.1"}
                           <ChevronDownIcon className="size-4 text-muted-foreground/75" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent asChild>
+                      <DropdownMenuContent asChild align="end">
                         <Command>
                           <CommandInput
                             placeholder="Search model..."
@@ -718,19 +720,36 @@ export default function ChatPage() {
                             <CommandGroup heading="Available Models">
                               <CommandItem
                                 onSelect={() =>
-                                  setSelectedModel("claude-sonnet-4")
+                                  setSelectedModel("claude-opus-4.1")
                                 }
-                                className="cursor-pointer"
+                                className="cursor-pointer justify-between"
                               >
-                                Claude Sonnet 4
+                                Claude Opus 4.1
+                                {selectedModel === "claude-opus-4.1" && (
+                                  <CheckIcon className="size-4" />
+                                )}
                               </CommandItem>
                               <CommandItem
                                 onSelect={() =>
                                   setSelectedModel("claude-opus-4")
                                 }
-                                className="cursor-pointer"
+                                className="cursor-pointer justify-between"
                               >
                                 Claude Opus 4
+                                {selectedModel === "claude-opus-4" && (
+                                  <CheckIcon className="size-4" />
+                                )}
+                              </CommandItem>
+                              <CommandItem
+                                onSelect={() =>
+                                  setSelectedModel("claude-sonnet-4")
+                                }
+                                className="cursor-pointer justify-between"
+                              >
+                                Claude Sonnet 4
+                                {selectedModel === "claude-sonnet-4" && (
+                                  <CheckIcon className="size-4" />
+                                )}
                               </CommandItem>
                             </CommandGroup>
                           </CommandList>
@@ -744,7 +763,8 @@ export default function ChatPage() {
                       disabled={
                         status !== "streaming" &&
                         status !== "submitted" &&
-                        textareaRef.current?.value.trim().length === 0
+                        !textareaRef.current?.value.trim() &&
+                        overflowFiles.length === 0
                       }
                       onClick={(e) => {
                         if (status === "streaming" || status === "submitted") {

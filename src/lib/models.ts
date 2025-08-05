@@ -22,5 +22,12 @@ export const models = customProvider({
         startWithReasoning: false,
       }),
     }),
+    "claude-opus-4.1": wrapLanguageModel({
+      model: anthropic("claude-opus-4-1-20250805"),
+      middleware: extractReasoningMiddleware({
+        tagName: "reasoning",
+        startWithReasoning: false,
+      }),
+    }),
   },
 });
