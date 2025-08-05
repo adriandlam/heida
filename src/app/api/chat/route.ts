@@ -1,9 +1,9 @@
 import { models } from "@/lib/models";
 import { webSearchTool } from "@/lib/tools";
+import { UIMessageWithMetadata } from "@/types/message";
 import { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import {
   streamText,
-  UIMessage,
   convertToModelMessages,
   smoothStream,
   stepCountIs,
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     enabledTools,
   }: {
     selectedModel: string;
-    messages: UIMessage[];
+    messages: UIMessageWithMetadata[];
     enabledTools: string[];
   } = await req.json();
 
@@ -57,8 +57,22 @@ export async function POST(req: Request) {
   });
 
   return result.toUIMessageStreamResponse({
+    originalMessages: messages,
     sendSources: true,
     sendReasoning: true,
+    messageMetadata: ({ part }) => {
+      if (part.type === "reasoning-start") {
+        return {
+          reasoning_start: Date.now(),
+        };
+      }
+      
+      if (part.type === "reasoning-end") {
+        return {
+          reasoning_end: Date.now(),
+        };
+      }
+    },
     onError: () => {
       return `An error occurred, please try again!`;
     },

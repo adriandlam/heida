@@ -147,3 +147,8 @@
 html {
   scroll-behavior: smooth;
 }
+
+:root:has(.no-overflow),
+:root:has(.no-overflow) body {
+  overflow: hidden;
+}

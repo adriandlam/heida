@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { StreamingMarkdown } from "@/components/memoized-markdown";
 import {
   Accordion,
@@ -22,9 +30,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { calculateReasoningTime, cn, countWords } from "@/lib/utils";
+import { UIMessageWithMetadata } from "@/types/message";
 import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
@@ -32,17 +48,19 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ClockFadingIcon,
+  CopyIcon,
   GlobeIcon,
   LetterTextIcon,
+  RotateCcwIcon,
   SlidersHorizontalIcon,
   XIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import ReactMarkdown from "react-markdown";
 
-const chat = new Chat({
+const chat = new Chat<UIMessageWithMetadata>({
   transport: new DefaultChatTransport({
     api: "/api/chat",
   }),
@@ -60,24 +78,21 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("claude-sonnet-4");
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [overflowFiles, setOverflowFiles] = useState<OverflowFile[]>([]);
-  const { messages, sendMessage, status, stop } = useChat({
-    chat,
-    experimental_throttle: 50,
-  });
+  const [textareaValue, setTextareaValue] = useState("");
+  const [reasoningStates, setReasoningStates] = useState<
+    Record<string, { isCollapsed: boolean; thinkingTime: number }>
+  >({});
+  const { messages, sendMessage, status, stop, regenerate } =
+    useChat<UIMessageWithMetadata>({
+      chat,
+      experimental_throttle: 50,
+    });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Constants for overflow detection
   const MAX_CHARS = 2000;
   const MAX_WORDS = 400;
-
-  // Utility functions
-  const countWords = (text: string): number => {
-    return text
-      .trim()
-      .split(/\s+/)
-      .filter((word) => word.length > 0).length;
-  };
 
   const generateId = (): string => {
     return Math.random().toString(36).substring(2, 11);
@@ -117,6 +132,55 @@ export default function ChatPage() {
     setOverflowFiles((prev) => prev.filter((file) => file.id !== id));
   };
 
+  const toggleReasoning = (messageId: string, partIndex: number) => {
+    const key = `${messageId}-${partIndex}`;
+    setReasoningStates((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        isCollapsed: !prev[key]?.isCollapsed,
+      },
+    }));
+  };
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // Reset height to get accurate scrollHeight
+      textarea.style.height = "auto";
+
+      // Calculate new height with min/max constraints
+      const minHeight = messages.length === 0 ? 120 : 112; // h-32 = 8rem = 128px, h-28 = 7rem = 112px
+      const maxHeight = 200; // Maximum height in pixels
+      const newHeight = Math.min(
+        Math.max(textarea.scrollHeight, minHeight),
+        maxHeight
+      );
+
+      textarea.style.height = `${newHeight}px`;
+    }
+  }, [textareaValue, messages.length]);
+
+  // Initialize reasoning state without auto-collapse
+  useEffect(() => {
+    messages.forEach((message) => {
+      if (message.role === "assistant") {
+        message.parts.forEach((part, partIndex) => {
+          if (part.type === "reasoning" && part.state === "done") {
+            const key = `${message.id}-${partIndex}`;
+            if (!reasoningStates[key]) {
+              setReasoningStates((prev) => ({
+                ...prev,
+                [key]: { isCollapsed: false, thinkingTime: 0 },
+              }));
+            }
+          }
+        });
+      }
+    });
+  }, [messages, reasoningStates]);
+
   useHotkeys(
     "slash",
     () => {
@@ -130,10 +194,20 @@ export default function ChatPage() {
   useHotkeys(
     "enter",
     () => {
-      if (textareaRef.current?.value.trim()) {
-        sendMessage({
-          text: textareaRef.current?.value,
-        });
+      if (textareaValue.trim()) {
+        sendMessage(
+          {
+            text: textareaValue,
+          },
+          {
+            body: {
+              selectedModel,
+              enabledTools,
+            },
+          }
+        );
+        setTextareaValue("");
+        setOverflowFiles([]);
       }
     },
     {
@@ -145,12 +219,29 @@ export default function ChatPage() {
   useHotkeys(
     "backspace",
     () => {
-      if (!textareaRef.current?.value.trim()) {
-        setOverflowFiles((prev) => prev.slice(0, -1));
+      if (!textareaValue.trim()) {
+        if (overflowFiles.length > 0) {
+          setOverflowFiles((prev) => prev.slice(0, -1));
+        } else {
+          textareaRef.current?.blur();
+        }
       }
     },
     {
       preventDefault: false,
+      enableOnFormTags: true,
+    }
+  );
+
+  useHotkeys(
+    "meta+z",
+    () => {
+      if (overflowFiles.length > 0) {
+        setOverflowFiles((prev) => prev.slice(0, -1));
+      }
+    },
+    {
+      preventDefault: true,
       enableOnFormTags: true,
     }
   );
@@ -166,17 +257,26 @@ export default function ChatPage() {
     }
   );
 
+  // useEffect(() => {
+  //   console.log(messages);
+  // }, [messages]);
+
   return (
-    <main className={cn(messages.length === 0 ? "pt-10 md:pt-50" : "pt-8")}>
+    <main
+      className={cn(
+        messages.length === 0 ? "pt-10 md:pt-50" : "pt-8",
+        messages.length === 0 && "no-overflow"
+      )}
+    >
       {messages.length === 0 && (
         <div>
           <div className="text-center">
             <h1 className="text-3xl font-medium tracking-tight font-mono">
-              ai
+              ai playground
             </h1>
             <p className=" text-muted-foreground mt-2 max-w-md mx-auto">
               Sometimes I run into Claude rate limits. I also wanted to see how
-              far I could go with creating custom tools for Claude, along with
+              far I could go with creating custom tools for Claude while
               experimenting with the{" "}
               <Link
                 href="https://sdk.vercel.ai/"
@@ -195,7 +295,7 @@ export default function ChatPage() {
       >
         {messages.length ? (
           <ScrollArea className="h-[calc(100vh-185px)]">
-            <div className="space-y-4 pb-8">
+            <div className="space-y-3 pb-8">
               <AnimatePresence mode="popLayout">
                 {messages.map((message, messageIndex) =>
                   message.role === "user" ? (
@@ -240,7 +340,7 @@ export default function ChatPage() {
                               return (
                                 <motion.div
                                   key={`${message.id}-${i}`}
-                                  className="px-3 py-2 opacity-80"
+                                  className="px-3.5 py-1.5 opacity-80 group"
                                   initial={{
                                     opacity: 0,
                                     filter: "blur(12px)",
@@ -266,6 +366,7 @@ export default function ChatPage() {
     prose-h4:text-lg prose-h4:font-semibold prose-h4:tracking-tight prose-h4:mt-6 prose-h4:mb-3
     prose-p:leading-relaxed
     text-[15px]
+    prose-p:text-foreground
     prose-p:whitespace-pre-wrap
     prose-strong:font-semibold prose-strong:text-foreground
     prose-blockquote:mt-6 prose-blockquote:mb-6 prose-blockquote:border-l-2 prose-blockquote:pl-6 prose-blockquote:italic prose-blockquote:text-muted-foreground prose-blockquote:bg-muted/20 prose-blockquote:py-2
@@ -285,6 +386,66 @@ export default function ChatPage() {
                                       key={`${message.id}-${i}`}
                                       content={part.text}
                                     />
+                                  </div>
+                                  <div
+                                    className={cn(
+                                      "flex justify-end mt-2 transition-all duration-200 opacity-0",
+                                      i === message.parts.length - 1 &&
+                                        messageIndex === messages.length - 1
+                                        ? "opacity-100"
+                                        : "group-hover:opacity-100"
+                                    )}
+                                  >
+                                    <span className="flex items-center gap-0.5 bg-muted/30 rounded-lg p-0.5">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 w-7"
+                                              onClick={() => {
+                                                navigator.clipboard.writeText(
+                                                  part.text
+                                                );
+                                              }}
+                                            >
+                                              <CopyIcon className="size-3" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="bottom">
+                                            Copy
+                                          </TooltipContent>
+                                        </Tooltip>
+                                        <Separator
+                                          orientation="vertical"
+                                          className="!h-5"
+                                        />
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 w-7"
+                                              onClick={() => {
+                                                regenerate({
+                                                  headers: {},
+                                                  body: {
+                                                    selectedModel,
+                                                    enabledTools,
+                                                  },
+                                                });
+                                              }}
+                                            >
+                                              <RotateCcwIcon className="size-3" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="bottom">
+                                            Regenerate response
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </span>
                                   </div>
                                 </motion.div>
                               );
@@ -386,10 +547,13 @@ export default function ChatPage() {
                                   </Accordion>
                                 </motion.div>
                               );
-                            case "reasoning":
-                              if (!enabledTools.includes("reasoning")) {
-                                return null;
-                              }
+                            case "reasoning": {
+                              const reasoningKey = `${message.id}-${i}`;
+                              const reasoningState =
+                                reasoningStates[reasoningKey];
+                              const isCollapsed =
+                                reasoningState?.isCollapsed ?? false;
+
                               return (
                                 <motion.div
                                   key={`${message.id}-${i}`}
@@ -408,22 +572,118 @@ export default function ChatPage() {
                                     ease: [0.25, 0.1, 0.25, 1],
                                     delay: 0.3,
                                   }}
+                                  className="mb-2"
                                 >
-                                  <Accordion type="single" collapsible>
-                                    <AccordionItem value="reasoning">
+                                  <Accordion
+                                    type="single"
+                                    collapsible
+                                    value={isCollapsed ? "" : "reasoning"}
+                                  >
+                                    <AccordionItem
+                                      value="reasoning"
+                                      className="border-0"
+                                    >
                                       <AccordionTrigger
-                                        className="text-muted-foreground 
-                                    px-3.5 py-2.5 font-normal text-sm hover:no-underline border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50"
+                                        onClick={() =>
+                                          toggleReasoning(message.id, i)
+                                        }
+                                        className="text-muted-foreground px-3.5 py-2.5 font-normal text-sm hover:no-underline border rounded-lg bg-background/50 hover:bg-accent/30 hover:text-accent-foreground !border-dashed transition-all duration-200 [&[data-state=open]]:border-solid [&[data-state=open]]:bg-accent/20"
                                       >
-                                        Thought Process
+                                        <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <motion.div
+                                              animate={{
+                                                rotate:
+                                                  part.state === "done"
+                                                    ? 0
+                                                    : 360,
+                                                scale:
+                                                  part.state === "done"
+                                                    ? 1
+                                                    : 0.9,
+                                              }}
+                                              transition={{
+                                                duration:
+                                                  part.state === "done"
+                                                    ? 0.3
+                                                    : 2,
+                                                repeat:
+                                                  part.state === "done"
+                                                    ? 0
+                                                    : Infinity,
+                                                ease:
+                                                  part.state === "done"
+                                                    ? "easeOut"
+                                                    : "linear",
+                                              }}
+                                              className={cn(
+                                                "size-1.5 rounded-full bg-emerald-500",
+                                                part.state === "done"
+                                                  ? "animate-none"
+                                                  : "animate-pulse"
+                                              )}
+                                            />
+                                            <span className="text-sm">
+                                              {part.state === "done"
+                                                ? "Thought Process"
+                                                : "Thinking..."}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-0.5 text-muted-foreground/60">
+                                            <ClockFadingIcon className="size-3" />
+                                            {part.state === "done" && (
+                                              <div className="text-xs font-mono">
+                                                {calculateReasoningTime(
+                                                  message
+                                                ) ||
+                                                  `${Math.round(
+                                                    part.text.length / 20
+                                                  )}s`}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
                                       </AccordionTrigger>
-                                      <AccordionContent className="mt-4">
-                                        {part.text}
+                                      <AccordionContent className="pointer-events-none px-1 py-2.5 bg-input/30 rounded-lg border border-dashed">
+                                        <div className="flex gap-2 px-[0.05rem]">
+                                          <div className="w-1 h-full bg-accent/50 rounded-full mt-1" />
+                                          <div
+                                            className="prose prose-sm max-w-full dark:prose-invert break-words overflow-hidden
+    prose-headings:text-foreground prose-headings:scroll-m-20
+    prose-h1:text-3xl prose-h1:font-extrabold prose-h1:tracking-tight prose-h1:lg:text-4xl prose-h1:mt-8 prose-h1:mb-4
+    prose-h2:border-b prose-h2:pb-2 prose-h2:text-2xl prose-h2:font-semibold prose-h2:tracking-tight prose-h2:first:mt-0 prose-h2:mt-8 prose-h2:mb-4
+    prose-h3:text-xl prose-h3:font-semibold prose-h3:tracking-tight prose-h3:mt-6
+    prose-h4:text-lg prose-h4:font-semibold prose-h4:tracking-tight prose-h4:mt-6 prose-h3:mb-3
+    prose-p:leading-relaxed
+    text-sm
+    prose-p:text-muted-foreground
+    prose-p:whitespace-pre-wrap
+    prose-strong:font-semibold prose-strong:text-foreground
+    prose-blockquote:mt-6 prose-blockquote:mb-6 prose-blockquote:border-l-2 prose-blockquote:pl-6 prose-blockquote:italic prose-blockquote:text-muted-foreground prose-blockquote:bg-muted/20 prose-blockquote:py-2
+    prose-ul:my-6 prose-ul:ml-6 prose-ul:list-disc prose-ul:[&>li]:mt-2 prose-ul:[&>li]:mb-1 prose-ul:[&>li]:leading-relaxed
+    prose-ol:my-6 prose-ol:ml-6 prose-ol:list-decimal prose-ol:[&>li]:mt-2 prose-ol:[&>li]:mb-1 prose-ol:[&>li]:leading-relaxed
+    prose-li:text-foreground prose-li:marker:text-muted-foreground prose-li:pl-1
+    prose-code:relative prose-code:rounded prose-code:bg-muted prose-code:px-[0.3rem] prose-code:py-[0.2rem] prose-code:text-sm prose-code:font-mono prose-code:text-foreground prose-code:break-all
+    prose-pre:mb-6 prose-pre:mt-6 prose-pre:overflow-x-auto prose-pre:rounded-lg prose-pre:bg-muted prose-pre:p-4 prose-pre:text-foreground prose-pre:max-w-full prose-pre:border
+    prose-table:my-6 prose-table:w-full prose-table:overflow-x-auto prose-table:block prose-table:whitespace-nowrap
+    prose-thead:border-b prose-thead:text-left
+    prose-th:border prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-bold prose-th:[&[align=center]]:text-center prose-th:[&[align=right]]:text-right
+    prose-td:border prose-td:px-4 prose-td:py-2 prose-td:[&[align=center]]:text-center prose-td:[&[align=right]]:text-right
+    prose-a:text-primary prose-a:underline prose-a:underline-offset-4 hover:prose-a:text-primary/80 prose-a:break-all
+    [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                                          >
+                                            <StreamingMarkdown
+                                              key={`${message.id}-${i}`}
+                                              content={part.text}
+                                            />
+                                          </div>
+                                        </div>
                                       </AccordionContent>
                                     </AccordionItem>
                                   </Accordion>
                                 </motion.div>
                               );
+                            }
                           }
                         })}
                       </AnimatePresence>
@@ -439,7 +699,7 @@ export default function ChatPage() {
                   animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
                   exit={{ opacity: 0.75, filter: "blur(4px)", y: -10 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-                  className="px-1.5 py-1"
+                  className="px-3 py-1 text-sm"
                 >
                   <motion.div
                     animate={{
@@ -463,20 +723,70 @@ export default function ChatPage() {
 
         <div
           className={cn(
-            "absolute bottom-10 w-full left-0 transition-all duration-300 ease-out",
-            messages.length === 0 && "bottom-1/3 -translate-y-1/2"
+            "fixed w-full left-0 transition-all duration-300 ease-out z-50",
+            messages.length === 0 ? "bottom-1/3 -translate-y-1/2" : "bottom-10"
           )}
         >
           <div className="relative max-w-2xl mx-auto">
+            {overflowFiles.length > 0 && (
+              <div className="mb-2 pl-2.5 py-2 border rounded-lg bg-input/30 shadow-sm">
+                <div className="flex flex-wrap gap-2">
+                  {overflowFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="min-w-0 max-w-36 bg-background border pl-1.5 pr-2 py-1 rounded-lg flex items-center gap-2 group hover:bg-accent/15 transition-colors"
+                    >
+                      <div className="flex items-center justify-center border p-1 rounded-sm bg-muted/50 shrink-0">
+                        <LetterTextIcon className="size-3.5 text-muted-foreground" />
+                      </div>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <div className="text-xs text-muted-foreground font-mono min-w-0 flex-1 cursor-pointer hover:text-foreground transition-colors">
+                            <span className="block truncate">
+                              {file.content.substring(0, 50)}...
+                            </span>
+                            <div className="text-[10px] text-muted-foreground/70">
+                              {file.wordCount} words
+                            </div>
+                          </div>
+                        </DialogTrigger>
+                        <DialogContent className="p-4 w-full !max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle className="font-medium flex items-center gap-2 pb-2">
+                              Preview of Pasted Content
+                              <div className="flex items-center gap-1.5 border rounded-full px-1.5 py-0.5 shadow-xs">
+                                <span className="text-xs text-muted-foreground/70">
+                                  {file.wordCount} words
+                                </span>
+                                <span className="rounded-full bg-foreground/25 w-1 h-1 inline-block" />
+                                <span className="text-xs text-muted-foreground/70">
+                                  {file.charCount} chars
+                                </span>
+                              </div>
+                            </DialogTitle>
+                            <DialogDescription className="text-xs h-[75dvh] font-mono overflow-y-auto text-muted-foreground whitespace-pre-wrap">
+                              {file.content}
+                            </DialogDescription>
+                          </DialogHeader>
+                        </DialogContent>
+                      </Dialog>
+                      <button
+                        onClick={() => removeOverflowFile(file.id)}
+                        className="shrink-0 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <XIcon className="size-3 text-muted-foreground hover:text-foreground transition-colors" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (
-                  textareaRef.current?.value.trim() ||
-                  overflowFiles.length > 0
-                ) {
+                if (textareaValue.trim() || overflowFiles.length > 0) {
                   // Combine current text with overflow files
-                  let fullText = textareaRef.current?.value || "";
+                  let fullText = textareaValue;
                   if (overflowFiles.length > 0) {
                     const overflowContent = overflowFiles
                       .map((file) => file.content)
@@ -496,42 +806,12 @@ export default function ChatPage() {
                       },
                     }
                   );
-                  textareaRef.current!.value = "";
+                  setTextareaValue("");
                   setOverflowFiles([]); // Clear overflow files after sending
                 }
               }}
-              className="bg-background"
+              className="bg-background absolute -top-56 left-0 right-0"
             >
-              {overflowFiles.length > 0 && (
-                <div className="pl-3.5 py-2 border rounded-lg bg-input/30 shadow-sm">
-                  <div className="flex flex-wrap gap-2">
-                    {overflowFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className="min-w-0 max-w-36 bg-background border pl-1.5 pr-2 py-1 rounded-lg flex items-center gap-2 group hover:bg-accent/15 transition-colors"
-                      >
-                        <div className="flex items-center justify-center border p-1 rounded-sm bg-muted/50 shrink-0">
-                          <LetterTextIcon className="size-3.5 text-muted-foreground" />
-                        </div>
-                        <div className="text-xs text-muted-foreground font-mono min-w-0 flex-1 cursor-default">
-                          <span className="block truncate">
-                            {file.content.substring(0, 50)}...
-                          </span>
-                          <div className="text-[10px] text-muted-foreground/70">
-                            {file.wordCount} words
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeOverflowFile(file.id)}
-                          className="shrink-0 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <XIcon className="size-3 text-muted-foreground hover:text-foreground transition-colors" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div className="relative">
                 <Textarea
                   placeholder={
@@ -539,14 +819,18 @@ export default function ChatPage() {
                       ? "What can I do for you today?"
                       : `Reply to ${selectedModel}...`
                   }
-                  className="w-full resize-none h-32 p-3.5 pr-24"
+                  className="w-full resize-none p-3.5 pr-24 pb-12 overflow-y-auto"
+                  style={{
+                    minHeight: messages.length === 0 ? "120px" : "112px",
+                    maxHeight: "200px",
+                  }}
                   ref={textareaRef}
+                  value={textareaValue}
                   onChange={(e) => {
-                    const { shouldCreateFile, truncatedText } =
-                      handleTextOverflow(e.target.value);
-                    if (shouldCreateFile) {
-                      e.target.value = truncatedText;
-                    }
+                    const { truncatedText } = handleTextOverflow(
+                      e.target.value
+                    );
+                    setTextareaValue(truncatedText);
                   }}
                 />
                 <div className="absolute top-4 right-4 text-muted-foreground border px-1.5 py-0.5 rounded text-xs bg-secondary pointer-events-none">
@@ -562,7 +846,7 @@ export default function ChatPage() {
                           type="button"
                           size="icon"
                           className={cn(
-                            "w-8 h-8 text-muted-foreground relative",
+                            "w-8 h-8 text-muted-foreground relative !bg-background",
                             enabledTools.length > 0 &&
                               "border !border-blue-500/25 !bg-blue-500/25 text-blue-400 hover:text-blue-300"
                           )}
@@ -664,34 +948,6 @@ export default function ChatPage() {
                         </Command>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    {/* <Button
-                      type="button"
-                      onClick={() => setIsReasoningEnabled(!isReasoningEnabled)}
-                      size="icon"
-                      className={cn(
-                        "w-8 h-8 text-muted-foreground group transition-all duration-200 ease-in-out overflow-hidden",
-                        isReasoningEnabled &&
-                          "!bg-blue-500/25 !text-blue-400 !border-blue-400/25"
-                      )}
-                      variant="ghost"
-                    >
-                      <div className="relative flex items-center justify-center w-full h-full">
-                        <ClockFadingIcon
-                          className={cn(
-                            "transition-all duration-200 ease-in-out",
-                            isReasoningEnabled &&
-                              "group-hover:opacity-0 group-hover:scale-75"
-                          )}
-                        />
-                        <XIcon
-                          className={cn(
-                            "absolute transition-all duration-200 ease-in-out opacity-0 scale-75",
-                            isReasoningEnabled &&
-                              "group-hover:opacity-100 group-hover:scale-100"
-                          )}
-                        />
-                      </div>
-                    </Button> */}
                   </div>
                   <div className="flex items-center gap-2 pointer-events-auto">
                     <DropdownMenu>
@@ -717,7 +973,7 @@ export default function ChatPage() {
                           />
                           <CommandList>
                             <CommandEmpty>No models found</CommandEmpty>
-                            <CommandGroup heading="Available Models">
+                            <CommandGroup heading="Anthropic">
                               <CommandItem
                                 onSelect={() =>
                                   setSelectedModel("claude-opus-4.1")
@@ -763,7 +1019,7 @@ export default function ChatPage() {
                       disabled={
                         status !== "streaming" &&
                         status !== "submitted" &&
-                        !textareaRef.current?.value.trim() &&
+                        !textareaValue.trim() &&
                         overflowFiles.length === 0
                       }
                       onClick={(e) => {
@@ -792,7 +1048,7 @@ export default function ChatPage() {
                           <g
                             id="🔍-System-Icons"
                             stroke="none"
-                            stroke-width="1"
+                            strokeWidth="1"
                             fill="currentColor"
                             fillRule="evenodd"
                           >
