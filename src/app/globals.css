@@ -152,3 +152,22 @@ html {
 :root:has(.no-overflow) body {
   overflow: hidden;
 }
+
+/* Sandpack theme integration */
+.sp-wrapper {
+  --sp-colors-fg-default: var(--foreground) !important;
+  --sp-colors-fg-muted: var(--muted-foreground) !important;
+  --sp-colors-bg-default: var(--background) !important;
+  --sp-colors-bg-surface: var(--card) !important;
+  --sp-border-radius: var(--radius) !important;
+}
+
+.sp-layout {
+  border-radius: var(--radius) !important;
+  overflow: hidden !important;
+}
+
+.sp-code-editor,
+.sp-preview {
+  height: 100% !important;
+}
