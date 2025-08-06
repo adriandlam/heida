@@ -9,9 +9,13 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { CopyButton } from "./copy-button";
-import { parseArtifacts, detectOpeningArtifactTag, extractPartialArtifact } from "./artifact-parser";
+import {
+  parseArtifacts,
+  detectOpeningArtifactTag,
+  extractPartialArtifact,
+} from "./artifact-parser";
 import "katex/dist/katex.min.css";
-import "highlight.js/styles/github-dark.css";
+// import "highlight.js/styles/github-dark.css";
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -83,12 +87,13 @@ export const StreamingMarkdown = memo(
     const parsedContent = useMemo(() => {
       // Detect opening artifact tags immediately to trigger panel
       detectOpeningArtifactTag(content, onArtifactDetected);
-      
+
       // Extract partial artifact content for streaming
-      const { isInsideArtifact, partialArtifact } = extractPartialArtifact(content);
+      const { isInsideArtifact, partialArtifact } =
+        extractPartialArtifact(content);
       if (isInsideArtifact && partialArtifact && onPartialArtifact) {
         onPartialArtifact(partialArtifact);
-        
+
         // If we're currently streaming inside an artifact, don't show the content in main chat
         // Only show content before the opening tag
         const openingTagRegex = /<antArtifact\s+[^>]*>/;
@@ -102,7 +107,7 @@ export const StreamingMarkdown = memo(
           }
         }
       }
-      
+
       return parseArtifacts(content, onArtifactFound);
     }, [content, onArtifactFound, onArtifactDetected, onPartialArtifact]);
 
