@@ -2,9 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Button } from "@/components/ui/button";
-import { ChevronLeftIcon } from "lucide-react";
-import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,13 +34,7 @@ export default function RootLayout({
           forcedTheme="dark"
           disableTransitionOnChange
         >
-          <Button variant="ghost" className="absolute top-4 left-4" asChild>
-            <Link href="https://adriandlam.com/projects" target="_blank">
-              <ChevronLeftIcon />
-              Back to Projects
-            </Link>
-          </Button>
-          <div className="max-w-screen-md mx-auto border-x border-dashed h-screen">
+          <div className="h-screen">
             {children}
           </div>
         </ThemeProvider>
