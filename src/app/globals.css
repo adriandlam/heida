@@ -167,7 +167,8 @@ html {
   overflow: hidden !important;
 }
 
-.sp-code-editor,
-.sp-preview {
+.sp-editor-viewer,
+.sp-preview,
+.sp-stack {
   height: 100% !important;
 }

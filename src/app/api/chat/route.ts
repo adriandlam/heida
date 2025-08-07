@@ -1,5 +1,6 @@
 import { models } from "@/lib/models";
-import { webSearchTool } from "@/lib/tools";
+import { webSearch } from "@/lib/tools";
+import "dotenv/config";
 import { UIMessageWithMetadata } from "@/types/message";
 import { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import {
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   // add a check to see if the model is valid
 
   const result = streamText({
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(3),
     model: models.languageModel(selectedModel),
     system: CLAUDE_SYSTEM_PROMPT,
     messages: convertToModelMessages(messages),
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       }),
     ],
     tools: enabledTools.includes("webSearch")
-      ? { web_search: webSearchTool }
+      ? { web_search: webSearch }
       : undefined,
     headers: {
       "anthropic-beta": "interleaved-thinking-2025-05-14",

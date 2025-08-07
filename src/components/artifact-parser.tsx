@@ -4,7 +4,7 @@ import "highlight.js/styles/atom-one-dark.css";
 import { ScrollArea } from "./ui/scroll-area";
 import { SandpackRenderer } from "./sandpack-renderer";
 import { Button } from "./ui/button";
-import { Code, CodeIcon, Eye, EyeIcon } from "lucide-react";
+import { CodeIcon, EyeIcon } from "lucide-react";
 import { Separator } from "./ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -156,6 +156,7 @@ interface ArtifactRendererProps {
 }
 
 export function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
+  
   const [viewMode, setViewMode] = useState<"artifact" | "code">("code");
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const contentLengthRef = useRef(artifact.content.length);
@@ -250,7 +251,7 @@ export function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
 
       <div className="relative m-6">
         {shouldUseSandpack() ? (
-          <div className="h-[calc(100vh-6rem)] border rounded-xl">
+          <div className="h-[calc(100vh-6rem)] border rounded-xl shadow-xs">
             {/* {viewMode === "artifact" ? ( */}
             <SandpackRenderer
               content={artifact.content}
@@ -258,15 +259,6 @@ export function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
               language={artifact.language}
               viewMode={viewMode}
             />
-            {/* ) : (
-              <ScrollArea className="h-full">
-                <div className="p-4">
-                  <Highlight className="text-sm rounded overflow-x-auto !p-0 !bg-background/75">
-                    {artifact.content}
-                  </Highlight>
-                </div>
-              </ScrollArea>
-            )} */}
           </div>
         ) : (
           <ScrollArea className="h-[calc(100vh-6rem)]">

@@ -2,9 +2,9 @@ import React from "react";
 import {
   SandpackProvider,
   SandpackLayout,
-  SandpackCodeEditor,
   SandpackPreview,
   SandpackFiles,
+  SandpackCodeViewer,
 } from "@codesandbox/sandpack-react";
 
 interface SandpackRendererProps {
@@ -176,40 +176,39 @@ root.render(<App />);`,
         className="!h-full"
         options={{
           externalResources: ["https://cdn.tailwindcss.com"],
+          autoReload: true,
           autorun: true,
           recompileMode: "immediate",
-          recompileDelay: 500,
-          bundlerURL: undefined, // Use default bundler
+          recompileDelay: 0,
+          bundlerURL: "https://sandpack-bundler.codesandbox.io",
           activeFile: template === "react" ? "/App.js" : Object.keys(files)[0],
         }}
         customSetup={{
           dependencies: {
             ...configDependencies,
-            // Common dependencies available for React artifacts
             react: "^18.0.0",
             "react-dom": "^18.0.0",
             "lucide-react": "^0.263.1",
             recharts: "^2.8.0",
-            // Allow additional dependencies to be passed in
             ...dependencies,
           },
         }}
       >
         <SandpackLayout className="!h-full">
           {viewMode === "code" ? (
-            <SandpackCodeEditor
-              readOnly={true}
+            <SandpackCodeViewer
               showTabs={false}
-              showLineNumbers={true}
-              showInlineErrors={true}
               wrapContent={true}
-              className="!h-full"
+              initMode="user-visible"
             />
           ) : (
             <SandpackPreview
-              showRefreshButton={true}
+              showSandpackErrorOverlay={true}
+              showRefreshButton={false}
               showOpenInCodeSandbox={false}
+              showRestartButton={false}
               className="!h-full"
+              key={`preview-${viewMode}-${JSON.stringify(files)}`}
             />
           )}
         </SandpackLayout>
